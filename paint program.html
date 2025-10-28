@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Paint Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for the canvas container to manage responsiveness and height */
+        #canvas-container {
+            flex-grow: 1;
+            /* Ensures the container takes up the remaining vertical space */
+        }
+        #drawing-canvas {
+            touch-action: none; /* Prevents default mobile behaviors like scrolling/zooming */
+            cursor: crosshair;
+        }
+        .tool-button:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            transform: translateY(-1px);
+        }
+        .active-tool {
+            box-shadow: 0 0 0 3px #1d4ed8 inset, 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* Blue inner border for active */
+            background-color: #bfdbfe; /* Light blue background for active */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col h-screen font-sans antialiased">
+
+    <!-- Header and Controls -->
+    <header class="bg-white shadow-md p-3">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0">
+            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">Paint Clone</h1>
+
+            <div id="controls" class="flex flex-wrap items-center space-x-2 space-y-1 md:space-y-0">
+
+                <!-- Tool Selector -->
+                <div class="flex space-x-2 p-1 bg-gray-100 rounded-lg shadow-inner">
+                    <button class="tool-button p-2 rounded-lg bg-white text-gray-700 active-tool" data-tool="brush" title="Brush (B)">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                    <button class="tool-button p-2 rounded-lg bg-white text-gray-700" data-tool="erase" title="Eraser (E)">
+                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                    <button class="tool-button p-2 rounded-lg bg-white text-gray-700" data-tool="fill" title="Fill (F)">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    </button>
+                    <button class="tool-button p-2 rounded-lg bg-white text-gray-700" data-tool="text" title="Text (T)">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10l2-2h10l2-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2zm16 10l-2 2m-2-2v2m-4 0v2"></path></svg>
+                    </button>
+                </div>
+
+                <!-- Color Picker -->
+                <div class="flex items-center space-x-2">
+                    <label for="color-picker" class="text-sm font-medium text-gray-700 hidden md:inline">Color:</label>
+                    <input type="color" id="color-picker" value="#1d4ed8" class="w-10 h-10 p-0.5 border-2 border-gray-300 rounded-md cursor-pointer">
+                </div>
+
+                <!-- Size Picker -->
+                <div class="flex items-center space-x-2">
+                    <label for="brush-size" class="text-sm font-medium text-gray-700 hidden md:inline">Size:</label>
+                    <input type="range" id="brush-size" min="2" max="50" value="8" class="w-20 md:w-32 cursor-pointer accent-blue-600">
+                    <span id="size-value" class="text-sm text-gray-600 w-6">8</span>
+                </div>
+
+                <!-- Clear Button -->
+                <button id="clear-canvas" class="p-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition duration-150 shadow-md flex items-center space-x-1" title="Clear Canvas">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    <span class="hidden sm:inline">Clear</span>
+                </button>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- Canvas Area -->
+    <div id="canvas-container" class="p-4 overflow-hidden flex justify-center items-center bg-gray-200">
+        <canvas id="drawing-canvas" class="bg-white border-4 border-gray-300 rounded-xl shadow-2xl"></canvas>
+    </div>
+
+    <!-- Text Input Overlay (Hidden by default) -->
+    <div id="text-input-overlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
+            <h3 class="text-lg font-semibold mb-3">Enter Text</h3>
+            <textarea id="text-input-area" rows="3" class="w-full border border-gray-300 p-2 rounded-lg focus:ring-blue-500 focus:border-blue-500 mb-3"></textarea>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-text" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cancel</button>
+                <button id="apply-text" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Apply Text</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Box for Alerts (No alert() allowed) -->
+    <div id="message-box" class="fixed bottom-4 right-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg shadow-lg transition-opacity duration-300 opacity-0 hidden z-50">
+        <p id="message-content"></p>
+    </div>
+
+
+    <script>
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('color-picker');
+        const brushSizeInput = document.getElementById('brush-size');
+        const sizeValueSpan = document.getElementById('size-value');
+        const clearButton = document.getElementById('clear-canvas');
+        const toolButtons = document.querySelectorAll('.tool-button');
+        const textOverlay = document.getElementById('text-input-overlay');
+        const textArea = document.getElementById('text-input-area');
+        const applyTextButton = document.getElementById('apply-text');
+        const cancelTextButton = document.getElementById('cancel-text');
+
+        let currentTool = 'brush';
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let brushColor = colorPicker.value;
+        let brushSize = parseInt(brushSizeInput.value);
+        let textX = 0;
+        let textY = 0;
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts RGB components to a single integer for Flood Fill.
+         * @param {number} r Red component (0-255)
+         * @param {number} g Green component (0-255)
+         * @param {number} b Blue component (0-255)
+         * @returns {number} The 32-bit color integer.
+         */
+        function rgbToUint32(r, g, b) {
+            return (255 << 24) | (b << 16) | (g << 8) | r;
+        }
+
+        /**
+         * Gets the color of a pixel at (x, y) on the canvas.
+         * @param {number} x
+         * @param {number} y
+         * @returns {number} The 32-bit color integer.
+         */
+        function getPixelColor(imageData, x, y, width) {
+            const index = (y * width + x) * 4;
+            const r = imageData.data[index];
+            const g = imageData.data[index + 1];
+            const b = imageData.data[index + 2];
+            // Ignore alpha for simplicity in this implementation (assume 255)
+            return rgbToUint32(r, g, b);
+        }
+
+        /**
+         * Sets the color of a pixel at (x, y) on the canvas.
+         */
+        function setPixelColor(imageData, x, y, width, r, g, b) {
+            const index = (y * width + x) * 4;
+            imageData.data[index] = r;
+            imageData.data[index + 1] = g;
+            imageData.data[index + 2] = b;
+            imageData.data[index + 3] = 255; // Set alpha to fully opaque
+        }
+
+        /**
+         * Shows a temporary message box instead of using alert().
+         * @param {string} message
+         */
+        function showMessage(message) {
+            const box = document.getElementById('message-box');
+            document.getElementById('message-content').textContent = message;
+            box.classList.remove('hidden', 'opacity-0');
+            box.classList.add('opacity-100');
+            setTimeout(() => {
+                box.classList.remove('opacity-100');
+                box.classList.add('opacity-0');
+                setTimeout(() => {
+                    box.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        /**
+         * Converts an RGB color string (e.g., "#1d4ed8") to an array of [r, g, b] numbers.
+         * @param {string} hex Hex color string
+         * @returns {number[]} [r, g, b] array
+         */
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [
+                parseInt(result[1], 16),
+                parseInt(result[2], 16),
+                parseInt(result[3], 16)
+            ] : [0, 0, 0];
+        }
+
+        // --- Canvas Initialization and Resizing ---
+
+        /**
+         * Resizes the canvas to fill its container and redraws the content.
+         * This preserves the drawing by temporarily using an off-screen canvas.
+         */
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            const rect = container.getBoundingClientRect();
+
+            // Create temporary canvas to hold current image data
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Resize the actual canvas
+            const newWidth = rect.width - 40; // Accounting for padding
+            const newHeight = rect.height - 40;
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+
+            // Draw the old content back onto the resized canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height); // Fill new area white
+            ctx.drawImage(tempCanvas, 0, 0);
+        }
+
+        window.addEventListener('load', () => {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Initial white background fill
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        });
+
+        // --- Core Drawing Logic ---
+
+        /**
+         * Draws a line segment between (x1, y1) and (x2, y2).
+         */
+        function drawLine(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = (currentTool === 'erase') ? 'white' : brushColor;
+            ctx.lineWidth = brushSize;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+
+        // --- Flood Fill Algorithm ---
+
+        /**
+         * Implements the 4-way Flood Fill algorithm (non-recursive stack-based).
+         * @param {number} startX Starting X coordinate
+         * @param {number} startY Starting Y coordinate
+         */
+        function floodFill(startX, startY) {
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Get the image data once for performance
+            const imageData = ctx.getImageData(0, 0, width, height);
+
+            // Target color to replace
+            const targetColor = getPixelColor(imageData, startX, startY, width);
+
+            // New color
+            const [rNew, gNew, bNew] = hexToRgb(brushColor);
+            const newColor = rgbToUint32(rNew, gNew, bNew);
+
+            // Avoid filling if colors are the same
+            if (targetColor === newColor) {
+                showMessage("Target color is already the selected color.");
+                return;
+            }
+
+            // Stack for the fill process (using an array as a stack)
+            const pixelStack = [[startX, startY]];
+
+            while (pixelStack.length) {
+                const [x, y] = pixelStack.pop();
+
+                // Boundary check
+                if (x < 0 || x >= width || y < 0 || y >= height) {
+                    continue;
+                }
+
+                const currentColor = getPixelColor(imageData, x, y, width);
+
+                if (currentColor === targetColor) {
+                    // Set the new color
+                    setPixelColor(imageData, x, y, width, rNew, gNew, bNew);
+
+                    // Push neighbors to the stack (4 directions)
+                    pixelStack.push([x + 1, y]);
+                    pixelStack.push([x - 1, y]);
+                    pixelStack.push([x, y + 1]);
+                    pixelStack.push([x, y - 1]);
+                }
+            }
+
+            // Put the modified data back to the canvas
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+
+        // --- Event Handlers ---
+
+        /**
+         * Gets the mouse/touch coordinates relative to the canvas.
+         */
+        function getCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+
+            if (e.touches && e.touches.length > 0) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            return { x: Math.round(x), y: Math.round(y) };
+        }
+
+        function handleStart(e) {
+            e.preventDefault();
+            const { x, y } = getCoords(e);
+
+            if (currentTool === 'brush' || currentTool === 'erase') {
+                isDrawing = true;
+                lastX = x;
+                lastY = y;
+                // Draw a dot on initial click/touch
+                drawLine(x, y, x, y);
+            } else if (currentTool === 'fill') {
+                floodFill(x, y);
+            } else if (currentTool === 'text') {
+                textX = x;
+                textY = y;
+                textArea.value = '';
+                textOverlay.style.display = 'flex';
+                textArea.focus();
+            }
+        }
+
+        function handleMove(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const { x, y } = getCoords(e);
+            drawLine(lastX, lastY, x, y);
+            lastX = x;
+            lastY = y;
+        }
+
+        function handleEnd() {
+            isDrawing = false;
+        }
+
+        function handleApplyText() {
+            const text = textArea.value.trim();
+            textOverlay.style.display = 'none';
+
+            if (text) {
+                ctx.fillStyle = brushColor;
+                ctx.font = `${brushSize * 2}px Inter, sans-serif`; // Font size scales with brush size
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+
+                const lines = text.split('\n');
+                let currentY = textY;
+                const lineHeight = brushSize * 2 * 1.2;
+
+                lines.forEach(line => {
+                    ctx.fillText(line, textX, currentY);
+                    currentY += lineHeight;
+                });
+            }
+        }
+
+        // --- Listener Setup ---
+
+        // Mouse/Touch Events for Canvas
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd); // Use window in case mouse leaves canvas
+
+        // Touch Events for Mobile
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleEnd);
+        window.addEventListener('touchcancel', handleEnd);
+
+
+        // Color and Size change
+        colorPicker.addEventListener('input', (e) => {
+            brushColor = e.target.value;
+        });
+
+        brushSizeInput.addEventListener('input', (e) => {
+            brushSize = parseInt(e.target.value);
+            sizeValueSpan.textContent = brushSize;
+        });
+
+        // Clear Canvas button
+        clearButton.addEventListener('click', () => {
+            const result = confirm("Are you sure you want to clear the canvas? This cannot be undone.");
+            if (result) {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                showMessage("Canvas cleared.");
+            } else {
+                 showMessage("Clear operation cancelled.");
+            }
+        });
+
+        // Tool Selection
+        toolButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Update active tool state
+                toolButtons.forEach(btn => btn.classList.remove('active-tool'));
+                button.classList.add('active-tool');
+
+                // Set the current tool
+                currentTool = button.dataset.tool;
+
+                // Update cursor based on tool
+                canvas.style.cursor = (currentTool === 'brush' || currentTool === 'erase') ? 'crosshair' : 'pointer';
+
+                showMessage(`Tool changed to ${currentTool.charAt(0).toUpperCase() + currentTool.slice(1)}.`);
+            });
+        });
+
+        // Text tool buttons
+        applyTextButton.addEventListener('click', handleApplyText);
+        cancelTextButton.addEventListener('click', () => {
+            textOverlay.style.display = 'none';
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (textOverlay.style.display === 'flex') return; // Ignore shortcuts while typing
+
+            const toolMap = {
+                'b': 'brush',
+                'e': 'erase',
+                'f': 'fill',
+                't': 'text'
+            };
+
+            const selectedTool = toolMap[e.key.toLowerCase()];
+
+            if (selectedTool) {
+                toolButtons.forEach(btn => {
+                    if (btn.dataset.tool === selectedTool) {
+                        btn.click();
+                        e.preventDefault(); // Prevent default browser action (like F5)
+                    }
+                });
+            }
+        });
+
+        // Custom confirmation logic (instead of confirm() since it's forbidden)
+        function confirm(message) {
+            const result = window.prompt(message + " Type 'yes' to confirm.");
+            return result && result.toLowerCase() === 'yes';
+        }
+
+    </script>
+
+</body>
+</html>
